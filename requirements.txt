@@ -1,0 +1,4 @@
+# Core dependencies for Mini Sumo Simulator
+numpy>=1.21.0
+pygame>=2.1.0
+gymnasium>=0.29.0
