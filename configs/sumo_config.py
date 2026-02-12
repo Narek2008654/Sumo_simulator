@@ -7,56 +7,11 @@ Based on official Mini Sumo specifications:
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
-# ============================================================================
-# Environment Configuration
-# ============================================================================
-
-@dataclass
-class SumoEnvConfig:
-    """Configuration for the sumo simulation environment."""
-    # Simulation settings
-    dt: float = 0.02  # 50 Hz simulation
-    max_episode_steps: int = 1000  # ~20 seconds
-    
-    # Physics
-    collision_restitution: float = 0.3
-    
-    # Rendering
-    render_mode: Optional[str] = None  # "human", "rgb_array", None
-    window_size: int = 600
-    fps: int = 50
-    
-    # Reward shaping
-    win_reward: float = 100.0
-    lose_reward: float = -100.0
-    push_reward_scale: float = 1.0
-    edge_penalty_scale: float = 0.5
-    time_penalty: float = -0.01
-    
-    # Randomization
-    random_start: bool = True
-
-
-# ============================================================================
-# Dohyo (Ring) Configuration
-# ============================================================================
-
-@dataclass  
-class DohyoConfig:
-    """Configuration for the dohyo (sumo ring)."""
-    diameter: float = 0.77  # 77cm in meters
-    border_width: float = 0.025  # 2.5cm white border
-    starting_line_length: float = 0.10  # 10cm
-    starting_line_width: float = 0.01  # 1cm
-    starting_line_separation: float = 0.10  # 10cm apart
-    
-    # Colors (RGB)
-    surface_color: tuple = (30, 30, 30)  # Matte black
-    border_color: tuple = (255, 255, 255)  # White tawara
-    starting_line_color: tuple = (139, 69, 19)  # Brown shikiri
-    background_color: tuple = (80, 80, 80)  # Outside area
+# Import canonical config classes from their source modules
+from environment.sumo.sumo_env import SumoEnvConfig
+from environment.sumo.boards.dohyo import DohyoConfig
 
 
 # ============================================================================

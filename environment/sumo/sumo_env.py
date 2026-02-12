@@ -306,21 +306,28 @@ class SumoEnv(gym.Env):
         return obs, reward, terminated, truncated, info
     
     def _get_observation(
-        self, 
-        robot_state: RobotState, 
+        self,
+        robot_state: RobotState,
         opponent_state: RobotState,
-        sensors: SensorSuite
+        sensors: SensorSuite,
+        robot_physics: Optional[RobotPhysics] = None,
+        opponent_physics: Optional[RobotPhysics] = None
     ) -> np.ndarray:
         """Get observation for a robot."""
+        if robot_physics is None:
+            robot_physics = self.robot1_physics
+        if opponent_physics is None:
+            opponent_physics = self.robot2_physics
+
         # Read sensors
         sensor_readings = read_all_sensors(
-            robot_state, self.robot1_physics, sensors,
-            opponent_state, self.robot2_physics,
+            robot_state, robot_physics, sensors,
+            opponent_state, opponent_physics,
             self.dohyo, add_noise=True, rng=self.rng
         )
-        
+
         # Normalize velocity
-        max_speed = self.robot1_physics.max_speed
+        max_speed = robot_physics.max_speed
         norm_vx = robot_state.vx / max_speed
         norm_vy = robot_state.vy / max_speed
         
@@ -478,9 +485,11 @@ class SumoEnv(gym.Env):
         # Render sensor beams for both robots
         self._render_sensor_beams(canvas, self.robot1_state, self.robot1_physics,
                                   self.robot1_sensors, self.robot2_state,
+                                  self.robot2_physics,
                                   scale, offset, (0, 150, 255, 100))  # Blue beams
         self._render_sensor_beams(canvas, self.robot2_state, self.robot2_physics,
                                   self.robot2_sensors, self.robot1_state,
+                                  self.robot1_physics,
                                   scale, offset, (255, 150, 0, 100))  # Orange beams
         
         # Render robots
@@ -615,27 +624,27 @@ class SumoEnv(gym.Env):
         robot_physics: RobotPhysics,
         sensors: SensorSuite,
         opponent_state: RobotState,
+        opponent_physics: RobotPhysics,
         scale: float,
         offset: Tuple[int, int],
         beam_color: Tuple[int, int, int, int]
     ):
         """Render sensor detection beams emanating from the robot."""
         from .sensors import read_opponent_sensor, transform_to_world
-        
+
         for i, sensor in enumerate(sensors.opponent_sensors):
             # Get sensor position and direction in world frame
             sensor_pos, sensor_dir = transform_to_world(
                 robot_state, sensor.position, sensor.direction
             )
-            
+
             # Read sensor value
             reading = read_opponent_sensor(
-                sensor, robot_state, opponent_state, 
-                self.robot2_physics, add_noise=False
+                sensor, robot_state, opponent_state,
+                opponent_physics, add_noise=False
             )
-            
+
             # Calculate beam end point
-            beam_length = sensor.max_range * scale
             end_pos = sensor_pos + sensor_dir * sensor.max_range
             
             # Convert to pixel coordinates
@@ -811,23 +820,25 @@ class SumoEnvMultiAgent(SumoEnv):
         obs, info = super().reset(seed, options)
         
         obs2 = self._get_observation(
-            self.robot2_state, self.robot1_state, self.robot2_sensors
+            self.robot2_state, self.robot1_state, self.robot2_sensors,
+            self.robot2_physics, self.robot1_physics
         )
-        
+
         return {"robot1": obs, "robot2": obs2}, info
-    
+
     def step(
-        self, 
+        self,
         actions: Dict[str, np.ndarray]
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, float], Dict[str, bool], Dict[str, bool], Dict]:
         """Take a step with actions for both agents."""
         action1 = actions.get("robot1", np.zeros(2))
         action2 = actions.get("robot2", np.zeros(2))
-        
+
         obs, reward, terminated, truncated, info = super().step(action1, action2)
-        
+
         obs2 = self._get_observation(
-            self.robot2_state, self.robot1_state, self.robot2_sensors
+            self.robot2_state, self.robot1_state, self.robot2_sensors,
+            self.robot2_physics, self.robot1_physics
         )
         
         # Calculate reward for robot 2 (inverse of robot 1)

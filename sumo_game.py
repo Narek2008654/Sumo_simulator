@@ -29,9 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pygame
 
-from environment.sumo.sumo_env import SumoEnv, SumoEnvConfig, SumoEnvMultiAgent
-from environment.sumo.physics import RobotPhysics
-from environment.sumo.boards.dohyo import DohyoConfig
+from environment.sumo.sumo_env import SumoEnv, SumoEnvConfig
 from agent.sumo.sumo_agent import ManualAgent, AggressiveAgent, DefensiveAgent, RandomAgent
 
 
