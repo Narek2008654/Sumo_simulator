@@ -22,7 +22,24 @@ python sumo_game.py --mode play
 python sumo_game.py --mode demo
 ```
 
-## Controls (Play Mode)
+### 3D Simulation (PyBullet)
+
+```bash
+# Play in 3D (you control blue robot)
+python sumo_game_3d.py --mode play
+
+# Watch agent vs agent in 3D
+python sumo_game_3d.py --mode demo
+
+# Options
+python sumo_game_3d.py --mode play --opponent defensive   # defensive opponent
+python sumo_game_3d.py --mode demo --episodes 20          # 20 demo episodes
+python sumo_game_3d.py --mode play --random-start          # random starting positions
+```
+
+## Controls
+
+### 2D (Pygame)
 
 | Key | Action |
 |-----|--------|
@@ -36,6 +53,19 @@ python sumo_game.py --mode demo
 | C | Clear Scores |
 | ESC | Quit |
 
+### 3D (PyBullet)
+
+| Key | Action |
+|-----|--------|
+| Arrow Up | Forward |
+| Arrow Down | Backward |
+| Arrow Left | Turn Left |
+| Arrow Right | Turn Right |
+| Z | Spin Left |
+| X | Spin Right |
+| R | Reset Match |
+| ESC | Quit |
+
 ## 📁 Project Structure
 
 ```
@@ -44,15 +74,20 @@ Sumo_simulator/
 │   └── sumo/
 │       └── sumo_agent.py  # Sumo robot agents (Manual, Aggressive, etc.)
 ├── environment/
-│   └── sumo/
-│       ├── sumo_env.py    # Main Gymnasium-compatible environment
-│       ├── physics.py     # Robot physics and collision detection
-│       ├── sensors.py     # Edge and opponent sensors
-│       └── boards/
-│           └── dohyo.py   # Dohyo ring implementation
+│   ├── sumo/
+│   │   ├── sumo_env.py    # 2D Gymnasium-compatible environment
+│   │   ├── physics.py     # 2D robot physics and collision detection
+│   │   ├── sensors.py     # Edge and opponent sensors
+│   │   └── boards/
+│   │       └── dohyo.py   # Dohyo ring implementation
+│   └── sumo3d/
+│       ├── sumo_env_3d.py # 3D PyBullet environment
+│       ├── physics3d.py   # 3D physics (PyBullet)
+│       └── sensors3d.py   # 3D sensor implementation
 ├── configs/
 │   └── sumo_config.py     # Configuration presets
-├── sumo_game.py           # Play/demo game script
+├── sumo_game.py           # 2D play/demo game script (Pygame)
+├── sumo_game_3d.py        # 3D play/demo game script (PyBullet)
 └── requirements.txt
 ```
 
@@ -140,6 +175,7 @@ env.close()
 - pygame >= 2.1.0
 - numpy >= 1.21.0
 - gymnasium >= 0.29.0
+- pybullet >= 3.2.0 (for 3D simulation)
 
 ## License
 
