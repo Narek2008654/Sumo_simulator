@@ -1,8 +1,13 @@
+import sys
+import os
+
+# Add project root to sys.path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),'../../../..'))
+
 import argparse
 import numpy as np
-from environment.sumo3d.sumo_env_3d import SumoEnv3D, SumoEnv3DConfig
+from environment.sumo.sumo_env import SumoEnv, SumoEnvConfig
 from ppo_torch_continuous import PPOAgent, PPOConfig, action_to_pwm
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -25,14 +30,14 @@ def main():
         use_tanh=True,
     )
 
-    env_cfg = SumoEnv3DConfig(
+    env_cfg = SumoEnvConfig(
         render_mode="human" if args.render else None,
         random_start=args.random_start,
         max_episode_steps=1000,   # ~20 s per match at 50 Hz
     )
 
     agent = PPOAgent(cfg)
-    env = SumoEnv3D(config=env_cfg)
+    env = SumoEnv(config=env_cfg)
 
     # reset() returns (obs, info)
     obs, _ = env.reset()
