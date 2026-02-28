@@ -201,3 +201,107 @@ class RandomAgent(SumoAgent):
         base = self.rng.uniform(0.3, 1.0)
         diff = self.rng.uniform(-0.5, 0.5)
         return np.array([base + diff, base - diff], dtype=np.float32)
+
+
+class PPOGameAgent(SumoAgent):
+    """Wrapper for the trained PPO agent to be used in the game UI/scripts."""
+    
+    def __init__(self, model_dir: str = "tmp/ppo_continuous"):
+        """
+        Load a trained PPO model.
+        
+        Args:
+            model_dir: Directory containing 'actor.pt' and 'critic.pt'
+        """
+        import sys
+        import os
+        
+        # Ensure project root is in sys.path for the following imports
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+            
+        try:
+            from agent.sumo.PPO.torch.ppo_torch_continuous import PPOAgent, PPOConfig
+        except ImportError as e:
+            print(f"Failed to import PPOAgent. Make sure project structure is correct. Error: {e}")
+            raise
+
+        # Initialize agent with same default config as training
+        self.cfg = PPOConfig(
+            chkpt_dir=model_dir,
+            obs_dim=11,      # Must match training
+            action_dim=2,
+            hidden1=16,
+            hidden2=16,
+            use_tanh=True
+        )
+        
+        self.agent = PPOAgent(self.cfg)
+        
+        # Load the trained weights
+        try:
+            self.agent.load_models()
+            print(f"✅ Successfully loaded PPO models from {model_dir}")
+        except FileNotFoundError:
+            print(f"❌ Error: Could not find model files in {model_dir}")
+            raise
+            
+    def act(self, observation: np.ndarray) -> np.ndarray:
+        """Get action from the trained PPO agent."""
+        # PPOAgent.choose_action returns (action_env, action_raw, log_prob, val)
+        # action_env is what the environment expects (normalized [-1, 1])
+        action_env, _, _, _ = self.agent.choose_action(observation)
+        return action_env
+
+
+class PPODiscreteGameAgent(SumoAgent):
+    """Wrapper for the trained discrete-action PPO agent."""
+    
+    def __init__(self, model_dir: str = "tmp/ppo_discrete"):
+        """
+        Load a trained discrete PPO model.
+        
+        Args:
+            model_dir: Directory containing 'actor_discrete.pt' and 'critic_discrete.pt'
+        """
+        import sys
+        import os
+        
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        
+        # Add the discrete PPO module directory
+        discrete_dir = os.path.join(project_root, 'agent', 'sumo', 'PPO', 'torch_discrete')
+        if discrete_dir not in sys.path:
+            sys.path.insert(0, discrete_dir)
+            
+        try:
+            from ppo_torch_discrete import PPODiscreteAgent, PPODiscreteConfig
+        except ImportError as e:
+            print(f"Failed to import PPODiscreteAgent. Error: {e}")
+            raise
+
+        self.cfg = PPODiscreteConfig(
+            chkpt_dir=model_dir,
+            obs_dim=11,
+            num_actions=5,
+            hidden1=64,
+            hidden2=32,
+        )
+        
+        self.agent = PPODiscreteAgent(self.cfg)
+        
+        try:
+            self.agent.load_models()
+            print(f"✅ Successfully loaded discrete PPO models from {model_dir}")
+        except FileNotFoundError:
+            print(f"❌ Error: Could not find model files in {model_dir}")
+            raise
+            
+    def act(self, observation: np.ndarray) -> np.ndarray:
+        """Get action from the trained discrete PPO agent."""
+        # choose_action returns (action_env, action_idx, log_prob, val)
+        action_env, _, _, _ = self.agent.choose_action(observation)
+        return action_env

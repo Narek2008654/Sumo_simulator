@@ -44,10 +44,21 @@ class SumoEnvConfig:
     # Reward shaping
     win_reward: float = 100.0
     lose_reward: float = -100.0
-    draw_penalty: float = -50.0  # Penalty for timeout/draw (encourages decisive action)
-    push_reward_scale: float = 5.0  # Reward for pushing opponent toward edge (aggressive)
-    edge_penalty_scale: float = 0.5  # Penalty for being near edge
-    time_penalty: float = -0.1  # Heavy penalty per step to discourage time wasting
+    draw_penalty: float = -20.0  # Mild penalty for timeout/draw (encourages decisive action)
+    push_reward_scale: float = 10.0  # Reward for pushing opponent toward edge (aggressive)
+    behind_push_reward: float = 3.0  # Bonus reward for pushing from behind
+    behind_angle_threshold: float = np.pi / 4  # 45 degrees - if abs(alpha) < threshold, pushing from behind
+    center_control_reward: float = 0.3  # Reward for staying near center (positional advantage)
+    facing_opponent_reward: float = 0.5  # Reward for facing the opponent (readiness)
+    speed_reward: float = 0.01  # Reward for moving with velocity (encourages aggression)
+    domination_reward: float = 1.5  # Bonus when closer to center than opponent during collision
+    collision_reward: float = 2.0  # Reward for making contact (aggression)
+    
+    # New Punishments
+    edge_penalty_scale: float = 0.1  # Penalty for being near the edge
+    immobility_penalty: float = -0.05  # Penalty for staying in one place
+    immobility_threshold: float = 0.1  # Speed below which robot is considered immobile
+    torque_penalty: float = 0.01  # Penalty for high motor torque
     
     # Randomization for training
     random_start: bool = True
@@ -234,6 +245,7 @@ class SumoEnv(gym.Env):
         
         # Apply actions (convert normalized to actual forces)
         action = np.clip(action, -1, 1)
+        self.last_action = action
         opponent_action = np.clip(opponent_action, -1, 1)
         
         left1 = action[0] * self.robot1_physics.max_force
@@ -357,32 +369,99 @@ class SumoEnv(gym.Env):
         prev_robot2_dist: float,
         collision_occurred: bool
     ) -> float:
-        """Calculate reward for robot 1."""
-        reward = self.config.time_penalty
+        """Calculate reward for robot 1.
         
-        # Win/lose rewards
+        Reward components:
+          1. Win/Lose terminal rewards
+          2. Push opponent toward edge (scaled)
+          3. Behind-push bonus (attacking from rear)
+          4. Center control (positional advantage for being near center)
+          5. Facing opponent (readiness reward)
+          6. Speed reward (encourages active movement)
+          7. Collision aggression + domination bonus
+        """
+        reward = 0.0
+        
+        # === 1. Terminal rewards (win/lose) ===
         if self.robot2_out and not self.robot1_out:
             reward += self.config.win_reward
         elif self.robot1_out and not self.robot2_out:
             reward += self.config.lose_reward
         elif self.robot1_out and self.robot2_out:
-            # Both out simultaneously - small negative (shouldn't happen often)
-            reward += -10.0
+            reward += -10.0  # Both out simultaneously
         
-        # Reward for pushing opponent toward edge
+        # === 2. Push opponent toward edge ===
         curr_robot2_dist = np.linalg.norm(self.robot2_state.position)
         push_reward = (curr_robot2_dist - prev_robot2_dist) * self.config.push_reward_scale
         reward += push_reward
         
-        # Penalty for being near edge
+        # === 3. Behind-push bonus ===
+        relative_pos = self.robot1_state.position - self.robot2_state.position
+        dist_to_agent = np.linalg.norm(relative_pos)
+        
+        if dist_to_agent > 1e-6:
+            angle_to_agent = np.arctan2(relative_pos[1], relative_pos[0])
+            opponent_heading = self.robot2_state.theta
+            alpha = angle_to_agent - opponent_heading
+            while alpha > np.pi:
+                alpha -= 2 * np.pi
+            while alpha < -np.pi:
+                alpha += 2 * np.pi
+            
+            if abs(alpha) < self.config.behind_angle_threshold and collision_occurred:
+                reward += self.config.behind_push_reward
+        
+        # === 4. Center control reward ===
+        # Agent gets positive reward for being near the center (positional advantage)
         curr_robot1_dist = np.linalg.norm(self.robot1_state.position)
+        center_ratio = 1.0 - (curr_robot1_dist / self.dohyo.inner_radius)
+        center_ratio = max(0.0, min(1.0, center_ratio))  # Clamp to [0, 1]
+        reward += center_ratio * self.config.center_control_reward
+        
+        # === 5. Facing opponent reward ===
+        # Reward for having the opponent in front (ready to attack)
+        if dist_to_agent > 1e-6:
+            to_opponent = self.robot2_state.position - self.robot1_state.position
+            angle_to_opponent = np.arctan2(to_opponent[1], to_opponent[0])
+            heading_diff = angle_to_opponent - self.robot1_state.theta
+            while heading_diff > np.pi:
+                heading_diff -= 2 * np.pi
+            while heading_diff < -np.pi:
+                heading_diff += 2 * np.pi
+            # Cosine similarity: 1.0 when perfectly facing, -1.0 when facing away
+            facing_score = np.cos(heading_diff)
+            if facing_score > 0:
+                reward += facing_score * self.config.facing_opponent_reward
+        
+        # === 6. Speed reward ===
+        # Encourages the agent to move actively rather than sit still
+        speed = np.sqrt(self.robot1_state.vx**2 + self.robot1_state.vy**2)
+        norm_speed = min(speed / self.robot1_physics.max_speed, 1.0)
+        reward += norm_speed * self.config.speed_reward
+        
+        # === 7. Edge proximity penalty ===
+        # Punish for being too close to the edge (passive/risky play)
         edge_proximity = curr_robot1_dist / self.dohyo.inner_radius
         if edge_proximity > 0.7:
             reward -= (edge_proximity - 0.7) * self.config.edge_penalty_scale
+            
+        # === 8. Immobility penalty (rotating in one place) ===
+        # Punish for staying in place (epsilon area of movement)
+        if speed < self.config.immobility_threshold:
+            reward += self.config.immobility_penalty
+            
+        # === 9. Torque penalty ===
+        # Punish for high motor usage (encourages efficiency)
+        if hasattr(self, 'last_action'):
+            reward -= np.sum(np.abs(self.last_action)) * self.config.torque_penalty
         
-        # Reward for collision (aggression)
+        # === 10. Collision aggression + domination bonus ===
         if collision_occurred:
-            reward += 1.0
+            reward += self.config.collision_reward
+            
+            # Domination bonus: closer to center than opponent during contact
+            if curr_robot1_dist < curr_robot2_dist:
+                reward += self.config.domination_reward
         
         return reward
     
