@@ -142,6 +142,10 @@ class SumoEnv(gym.Env):
         
         # Define spaces for gym compatibility
         self._define_spaces()
+
+        # Track flags for info/reward shaping
+        self.collision_occurred = False
+        self.behind_push_detected = False
     
     def _define_spaces(self):
         """Define observation and action spaces."""
@@ -185,6 +189,8 @@ class SumoEnv(gym.Env):
         self.step_count = 0
         self.robot1_out = False
         self.robot2_out = False
+        self.collision_occurred = False
+        self.behind_push_detected = False
         
         # Get starting positions
         robot_length = max(self.robot1_physics.length, self.robot2_physics.length)
@@ -408,7 +414,9 @@ class SumoEnv(gym.Env):
             while alpha < -np.pi:
                 alpha += 2 * np.pi
             
+            self.behind_push_detected = False
             if abs(alpha) < self.config.behind_angle_threshold and collision_occurred:
+                self.behind_push_detected = True
                 reward += self.config.behind_push_reward
         
         # === 4. Center control reward ===
@@ -456,6 +464,7 @@ class SumoEnv(gym.Env):
             reward -= np.sum(np.abs(self.last_action)) * self.config.torque_penalty
         
         # === 10. Collision aggression + domination bonus ===
+        self.collision_occurred = collision_occurred
         if collision_occurred:
             reward += self.config.collision_reward
             
@@ -526,6 +535,8 @@ class SumoEnv(gym.Env):
             "robot1_score": self.robot1_score,
             "robot2_score": self.robot2_score,
             "match_count": self.match_count,
+            "collision_occurred": self.collision_occurred,
+            "behind_push_detected": self.behind_push_detected,
         }
     
     def render(self) -> Optional[np.ndarray]:

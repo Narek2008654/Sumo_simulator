@@ -305,3 +305,71 @@ class PPODiscreteGameAgent(SumoAgent):
         # choose_action returns (action_env, action_idx, log_prob, val)
         action_env, _, _, _ = self.agent.choose_action(observation)
         return action_env
+
+
+class QModelGameAgent(SumoAgent):
+    """Wrapper for the trained Q-Model (DQN) agent — compact Arduino-ready model."""
+
+    def __init__(self, model_dir: str = "tmp/q_model"):
+        """
+        Load a trained Q-Model.
+
+        Args:
+            model_dir: Directory containing 'q_network.pt'
+        """
+        import sys
+        import os
+
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+
+        dqn_dir = os.path.join(project_root, 'agent', 'sumo', 'DQN')
+        if dqn_dir not in sys.path:
+            sys.path.insert(0, dqn_dir)
+
+        try:
+            from q_model import DQNAgent, QModelConfig
+        except ImportError as e:
+            print(f"Failed to import DQNAgent. Error: {e}")
+            raise
+
+        self.cfg = QModelConfig(
+            chkpt_dir=model_dir,
+            obs_dim=5,
+            num_actions=5,
+            hidden1=16,
+            hidden2=16,
+        )
+
+        self.agent = DQNAgent(self.cfg)
+
+        try:
+            self.agent.load_models()
+            print(f"✅ Successfully loaded Q-Model from {model_dir}")
+        except FileNotFoundError:
+            print(f"❌ Error: Could not find model files in {model_dir}")
+            raise
+
+        # Track last action for observation building
+        self.last_action = np.array([0.0, 0.0], dtype=np.float32)
+
+    def act(self, observation: np.ndarray) -> np.ndarray:
+        """
+        Get action from the trained Q-Model.
+
+        Args:
+            observation: 11-dim env observation
+
+        Returns:
+            [left_motor, right_motor] action
+        """
+        # Extract 5D obs: 3 front sensors + last action
+        obs_5d = np.concatenate([observation[0:3], self.last_action]).astype(np.float32)
+        action_env, _ = self.agent.choose_action_greedy(obs_5d)
+        self.last_action = action_env.copy()
+        return action_env
+
+    def reset(self):
+        """Reset last action on episode boundary."""
+        self.last_action = np.array([0.0, 0.0], dtype=np.float32)
